@@ -249,3 +249,7 @@ rather than redundant with the policy engine (point 2), and the loop
 termination guarantees (their own section above) -- these are the actual
 safety-bearing decisions, and everything else (FastAPI wiring, the
 dashboard, the mock backend) is comparatively mechanical.
+
+## Note on Commit History
+
+The assignment requested small, regular commits. Unfortunately, due to the way this project was moved/uploaded into the final directory before pushing to GitHub, the original incremental `.git` history was flattened into a single "Initial commit." The code was developed iteratively, but the step-by-step history was lost during the final repository initialization.
