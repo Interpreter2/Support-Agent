@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+import asyncio
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from support_agent.llm.ollama_client import OllamaClient
+from support_agent.runner import run_tickets_concurrently
 from support_agent.service import Service, build_service
 from support_agent.types import Ticket
 
@@ -65,6 +68,8 @@ class OutcomeOut(BaseModel):
     escalation_reason: str | None
     iterations: int
     duration_s: float
+    critique_occurred: bool = False
+    improved_by_critique: bool = False
 
 
 class ApprovalAction(BaseModel):
@@ -80,8 +85,26 @@ def submit_ticket(payload: TicketIn) -> OutcomeOut:
         ticket_id=outcome.ticket_id, run_id=outcome.run_id,
         resolution=outcome.resolution.value, customer_reply=outcome.customer_reply,
         escalation_reason=outcome.escalation_reason, iterations=outcome.iterations,
-        duration_s=outcome.duration_s,
+        duration_s=outcome.duration_s, critique_occurred=outcome.critique_occurred,
+        improved_by_critique=outcome.improved_by_critique,
     )
+
+
+@app.post("/tickets/batch", response_model=list[OutcomeOut])
+async def submit_ticket_batch(payloads: list[TicketIn]) -> list[OutcomeOut]:
+    svc = get_service()
+    tickets = [Ticket.new(p.customer_id, p.subject, p.body) for p in payloads]
+    summary = await run_tickets_concurrently(svc, tickets)
+    return [
+        OutcomeOut(
+            ticket_id=outcome.ticket_id, run_id=outcome.run_id,
+            resolution=outcome.resolution.value, customer_reply=outcome.customer_reply,
+            escalation_reason=outcome.escalation_reason, iterations=outcome.iterations,
+            duration_s=outcome.duration_s, critique_occurred=outcome.critique_occurred,
+            improved_by_critique=outcome.improved_by_critique,
+        )
+        for outcome in summary.outcomes
+    ]
 
 
 @app.get("/runs/{run_id}/audit")
@@ -91,6 +114,31 @@ def get_audit(run_id: str) -> list[dict]:
     if not events:
         raise HTTPException(404, f"no audit events for run {run_id}")
     return events
+
+
+@app.get("/runs/stream")
+async def stream_runs(request: Request):
+    q = asyncio.Queue()
+    svc = get_service()
+    
+    loop = asyncio.get_event_loop()
+    def _callback(line: str):
+        loop.call_soon_threadsafe(q.put_nowait, line)
+        
+    svc.audit.subscribers.append(_callback)
+    
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                line = await q.get()
+                yield f"data: {line}\n\n"
+        finally:
+            if _callback in svc.audit.subscribers:
+                svc.audit.subscribers.remove(_callback)
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/approvals")

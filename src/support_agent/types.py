@@ -102,3 +102,5 @@ class AgentOutcome:
     run_id: str
     iterations: int
     duration_s: float
+    critique_occurred: bool = False
+    improved_by_critique: bool = False

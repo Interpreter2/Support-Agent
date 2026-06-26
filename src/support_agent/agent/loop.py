@@ -105,6 +105,9 @@ class AgentLoop:
         tools = _tool_schemas(self.registry)
 
         stalled_once = False
+        draft_reply = None
+        critique_occurred = False
+        improved_by_critique = False
 
         for iteration in range(1, MAX_ITERATIONS + 1):
             if time.time() - start > WALL_CLOCK_BUDGET_S:
@@ -136,10 +139,27 @@ class AgentLoop:
                     call, run_id=run_id, ticket_id=ticket.ticket_id,
                     requesting_customer_id=ticket.customer_id,
                 )
-                messages.append(self._tool_result_message(call, result))
 
                 if call.name == "send_reply" and result.ok:
-                    terminal = result.content.get("message", "")
+                    if not critique_occurred:
+                        draft_reply = result.content.get("message", "")
+                        critique_occurred = True
+                        self.audit.log(run_id, ticket.ticket_id, "self_critique_requested", draft=draft_reply)
+                        
+                        # Intercept and ask for critique
+                        result.ok = False
+                        result.content = {
+                            "error": "self_critique_requested", 
+                            "instructions": "Review your proposed reply for tone and correctness. Ensure you did not confirm any action that requires human approval (like refunds) as completed—only that it is pending. Call send_reply again with the improved message, or the exact same message if it is perfect."
+                        }
+                        messages.append(self._tool_result_message(call, result))
+                    else:
+                        terminal = result.content.get("message", "")
+                        improved_by_critique = (terminal != draft_reply)
+                        self.audit.log(run_id, ticket.ticket_id, "self_critique_completed", improved=improved_by_critique, final=terminal)
+                        messages.append(self._tool_result_message(call, result))
+                else:
+                    messages.append(self._tool_result_message(call, result))
 
             if terminal is not None:
                 duration = time.time() - start
@@ -149,6 +169,8 @@ class AgentLoop:
                     ticket_id=ticket.ticket_id, resolution=Resolution.RESOLVED,
                     customer_reply=terminal, escalation_reason=None,
                     run_id=run_id, iterations=iteration, duration_s=duration,
+                    critique_occurred=critique_occurred,
+                    improved_by_critique=improved_by_critique,
                 )
 
         return self._escalate(run_id, ticket, start, MAX_ITERATIONS, "loop_budget_exceeded")
@@ -161,6 +183,7 @@ class AgentLoop:
             ticket_id=ticket.ticket_id, resolution=Resolution.ESCALATED,
             customer_reply=None, escalation_reason=reason,
             run_id=run_id, iterations=iterations, duration_s=duration,
+            critique_occurred=False, improved_by_critique=False,
         )
 
     @staticmethod

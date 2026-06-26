@@ -28,6 +28,7 @@ class AuditLog:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self.subscribers = []
 
     def _write(self, event: dict[str, Any]) -> None:
         event["ts"] = time.time()
@@ -35,6 +36,8 @@ class AuditLog:
         with self._lock:
             with open(self.path, "a") as f:
                 f.write(line + "\n")
+        for sub in self.subscribers:
+            sub(line)
 
     def log(self, run_id: str, ticket_id: str, event_type: str, **fields: Any) -> None:
         self._write({

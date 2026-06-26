@@ -213,7 +213,12 @@ function escapeHtml(s) {
 }
 
 loadAll();
-setInterval(loadAll, 4000);
+const evtSource = new EventSource("/runs/stream");
+evtSource.onmessage = function(event) {
+  // Instead of complex client-side state merging, we just trigger a 
+  // fast reload of the lists when an event is received.
+  loadAll();
+};
 </script>
 </body>
 </html>
