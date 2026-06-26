@@ -167,6 +167,12 @@ p {
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+.badge-pending {
+  background-color: rgba(245, 158, 11, 0.1); /* amber-500 */
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
 /* App Container */
 .app-container {
   width: 100%;

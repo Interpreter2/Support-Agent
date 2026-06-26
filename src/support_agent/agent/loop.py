@@ -46,12 +46,13 @@ from support_agent.types import (
     AgentOutcome,
     PolicyDecision,
     Resolution,
+    TicketStatus,
     Ticket,
     ToolCall,
 )
 
 MAX_ITERATIONS = 8
-WALL_CLOCK_BUDGET_S = 45.0
+WALL_CLOCK_BUDGET_S = 120.0
 
 SYSTEM_PROMPT = """You are a customer support agent. You resolve tickets by calling tools.
 
@@ -108,6 +109,7 @@ class AgentLoop:
         draft_reply = None
         critique_occurred = False
         improved_by_critique = False
+        requires_approval_occurred = False
 
         for iteration in range(1, MAX_ITERATIONS + 1):
             if time.time() - start > WALL_CLOCK_BUDGET_S:
@@ -131,6 +133,7 @@ class AgentLoop:
                 )})
                 continue
 
+            stalled_once = False
             messages.append(self._assistant_message(turn))
 
             terminal = None
@@ -139,6 +142,9 @@ class AgentLoop:
                     call, run_id=run_id, ticket_id=ticket.ticket_id,
                     requesting_customer_id=ticket.customer_id,
                 )
+
+                if result.policy and result.policy.decision == PolicyDecision.REQUIRES_APPROVAL:
+                    requires_approval_occurred = True
 
                 if call.name == "send_reply" and result.ok:
                     if not critique_occurred:
@@ -163,10 +169,13 @@ class AgentLoop:
 
             if terminal is not None:
                 duration = time.time() - start
+                status = TicketStatus.PENDING_APPROVAL if requires_approval_occurred else TicketStatus.RESOLVED
                 self.audit.log(run_id, ticket.ticket_id, "run_resolved",
+                                ticket_status=status.value,
                                 duration_s=duration, iterations=iteration)
                 return AgentOutcome(
                     ticket_id=ticket.ticket_id, resolution=Resolution.RESOLVED,
+                    ticket_status=status,
                     customer_reply=terminal, escalation_reason=None,
                     run_id=run_id, iterations=iteration, duration_s=duration,
                     critique_occurred=critique_occurred,
@@ -178,9 +187,11 @@ class AgentLoop:
     def _escalate(self, run_id, ticket, start, iterations, reason) -> AgentOutcome:
         duration = time.time() - start
         self.audit.log(run_id, ticket.ticket_id, "run_escalated",
+                        ticket_status=TicketStatus.ESCALATED.value,
                         reason=reason, duration_s=duration, iterations=iterations)
         return AgentOutcome(
             ticket_id=ticket.ticket_id, resolution=Resolution.ESCALATED,
+            ticket_status=TicketStatus.ESCALATED,
             customer_reply=None, escalation_reason=reason,
             run_id=run_id, iterations=iterations, duration_s=duration,
             critique_occurred=False, improved_by_critique=False,

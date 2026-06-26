@@ -49,6 +49,7 @@
   }
   .badge.resolved{background:#16301f; color:var(--ok)}
   .badge.escalated{background:#3a2618; color:var(--warn)}
+  .badge.pending_approval{background:#1a2b3c; color:var(--pend)}
   .run-meta{font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:4px}
   .run-meta .denial{color:var(--bad)}
   .empty{color:var(--dim); padding:20px 4px; font-size:12.5px}
@@ -123,10 +124,11 @@ async function loadAll() {
   ]);
   renderRuns(runs);
   renderApprovals(approvals);
-  const resolved = runs.filter(r => r.resolution === 'resolved').length;
-  const escalated = runs.filter(r => r.resolution === 'escalated').length;
+  const resolved = runs.filter(r => r.ticket_status === 'resolved' || r.resolution === 'resolved').length;
+  const escalated = runs.filter(r => r.ticket_status === 'escalated' || r.resolution === 'escalated').length;
+  const pending = runs.filter(r => r.ticket_status === 'pending_approval').length;
   document.getElementById('summary-tag').textContent =
-    `${runs.length} runs · ${resolved} resolved · ${escalated} escalated · ${approvals.length} pending approval`;
+    `${runs.length} runs · ${resolved} resolved · ${escalated} escalated · ${pending} pending · ${approvals.length} approvals queue`;
   if (selectedRun && runs.some(r => r.run_id === selectedRun)) {
     loadEvents(selectedRun);
   }
@@ -139,7 +141,7 @@ function renderRuns(runs) {
     <div class="run-card ${r.run_id === selectedRun ? 'active' : ''}" onclick="selectRun('${r.run_id}')">
       <div class="run-top">
         <span class="run-subject">${escapeHtml(r.subject || r.ticket_id)}</span>
-        <span class="badge ${r.resolution || 'pending'}">${r.resolution || 'running'}</span>
+        <span class="badge ${r.ticket_status || r.resolution || 'pending'}">${r.ticket_status || r.resolution || 'running'}</span>
       </div>
       <div class="run-meta">
         ${r.customer_id || '—'} · ${r.tool_calls} tool calls

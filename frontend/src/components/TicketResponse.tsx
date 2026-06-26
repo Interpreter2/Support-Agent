@@ -19,21 +19,32 @@ export function TicketResponse({ outcome }: Props) {
     );
   }
 
-  const isResolved = outcome.resolution === 'resolved';
+  const isResolved = outcome.ticket_status === 'resolved';
+  const isPending = outcome.ticket_status === 'pending_approval';
+
+  const getStatusIcon = () => {
+    if (isResolved) return <CheckCircle2 color="var(--success-color)" />;
+    if (isPending) return <Clock color="#f59e0b" />;
+    return <AlertTriangle color="var(--danger-color)" />;
+  };
+
+  const getBadgeClass = () => {
+    if (isResolved) return 'badge-success';
+    if (isPending) return 'badge-pending';
+    return 'badge-danger';
+  };
+
+  const displayStatus = outcome.ticket_status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
   return (
     <div className="glass-panel">
       <div className="response-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-          {isResolved ? (
-            <CheckCircle2 color="var(--success-color)" />
-          ) : (
-            <AlertTriangle color="var(--danger-color)" />
-          )}
-          Ticket {outcome.resolution}
+          {getStatusIcon()}
+          Ticket {displayStatus}
         </h2>
-        <span className={`badge ${isResolved ? 'badge-success' : 'badge-danger'}`}>
-          {outcome.resolution}
+        <span className={`badge ${getBadgeClass()}`}>
+          {displayStatus}
         </span>
       </div>
 
@@ -50,7 +61,7 @@ export function TicketResponse({ outcome }: Props) {
       </div>
 
       <div className="response-box">
-        {isResolved ? (
+        {isResolved || isPending ? (
           <>
             <h4 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Customer Reply:</h4>
             <p style={{ color: 'white', whiteSpace: 'pre-wrap' }}>{outcome.customer_reply}</p>

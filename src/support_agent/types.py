@@ -93,10 +93,17 @@ class Resolution(str, Enum):
     ESCALATED = "escalated"
 
 
+class TicketStatus(str, Enum):
+    RESOLVED = "resolved"
+    ESCALATED = "escalated"
+    PENDING_APPROVAL = "pending_approval"
+
+
 @dataclass
 class AgentOutcome:
     ticket_id: str
     resolution: Resolution
+    ticket_status: TicketStatus
     customer_reply: Optional[str]
     escalation_reason: Optional[str]
     run_id: str

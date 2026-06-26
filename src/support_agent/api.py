@@ -39,7 +39,7 @@ _service: Service | None = None
 def get_service() -> Service:
     global _service
     if _service is None:
-        model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+        model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
         if model == "fake":
             from support_agent.llm.fake import FakeLLMClient, ScriptedTurn
             script = [
@@ -64,6 +64,7 @@ class OutcomeOut(BaseModel):
     ticket_id: str
     run_id: str
     resolution: str
+    ticket_status: str
     customer_reply: str | None
     escalation_reason: str | None
     iterations: int
@@ -83,7 +84,8 @@ def submit_ticket(payload: TicketIn) -> OutcomeOut:
     outcome = svc.loop.run(ticket)
     return OutcomeOut(
         ticket_id=outcome.ticket_id, run_id=outcome.run_id,
-        resolution=outcome.resolution.value, customer_reply=outcome.customer_reply,
+        resolution=outcome.resolution.value, ticket_status=outcome.ticket_status.value,
+        customer_reply=outcome.customer_reply,
         escalation_reason=outcome.escalation_reason, iterations=outcome.iterations,
         duration_s=outcome.duration_s, critique_occurred=outcome.critique_occurred,
         improved_by_critique=outcome.improved_by_critique,
@@ -98,7 +100,8 @@ async def submit_ticket_batch(payloads: list[TicketIn]) -> list[OutcomeOut]:
     return [
         OutcomeOut(
             ticket_id=outcome.ticket_id, run_id=outcome.run_id,
-            resolution=outcome.resolution.value, customer_reply=outcome.customer_reply,
+            resolution=outcome.resolution.value, ticket_status=outcome.ticket_status.value,
+            customer_reply=outcome.customer_reply,
             escalation_reason=outcome.escalation_reason, iterations=outcome.iterations,
             duration_s=outcome.duration_s, critique_occurred=outcome.critique_occurred,
             improved_by_critique=outcome.improved_by_critique,
@@ -208,7 +211,7 @@ def list_runs() -> list[dict]:
         if rid not in by_run:
             by_run[rid] = {
                 "run_id": rid, "ticket_id": e.get("ticket_id"),
-                "started_at": None, "resolution": None, "reason": None,
+                "started_at": None, "resolution": None, "ticket_status": None, "reason": None,
                 "iterations": None, "duration_s": None, "subject": None,
                 "customer_id": None, "tool_calls": 0, "policy_denials": 0,
                 "approvals_filed": 0,
@@ -221,10 +224,12 @@ def list_runs() -> list[dict]:
             rec["customer_id"] = e.get("customer_id")
         elif e["event"] == "run_resolved":
             rec["resolution"] = "resolved"
+            rec["ticket_status"] = e.get("ticket_status", "resolved")
             rec["iterations"] = e.get("iterations")
             rec["duration_s"] = e.get("duration_s")
         elif e["event"] == "run_escalated":
             rec["resolution"] = "escalated"
+            rec["ticket_status"] = e.get("ticket_status", "escalated")
             rec["reason"] = e.get("reason")
             rec["iterations"] = e.get("iterations")
             rec["duration_s"] = e.get("duration_s")
