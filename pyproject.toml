@@ -1,0 +1,27 @@
+[project]
+name = "support-agent"
+version = "0.1.0"
+description = "Autonomous support ticket resolution agent"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Support Agent — Run Log</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#151a23; --line:#262d3a; --text:#d7dbe3; --dim:#7b8496;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+    --ok:#5fd98a; --warn:#e8b34a; --bad:#e8635a; --pend:#6aa3e8;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    font-size:13px; line-height:1.5;
+  }
+  header{
+    display:flex; align-items:baseline; gap:14px; padding:18px 24px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5;
+  }
+  header h1{font-size:15px; font-weight:600; margin:0; letter-spacing:.2px}
+  header .tag{font-family:var(--mono); color:var(--dim); font-size:12px}
+  header .spacer{flex:1}
+  button.refresh{
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:6px 12px; border-radius:4px; font-family:var(--sans); font-size:12px;
+    cursor:pointer;
+  }
+  button.refresh:hover{border-color:#3a4254}
+  .layout{display:grid; grid-template-columns: 380px 1fr 320px; gap:0; height:calc(100vh - 57px)}
+  .col{overflow-y:auto; border-right:1px solid var(--line); padding:14px}
+  .col:last-child{border-right:none}
+  .section-label{
+    font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--dim); margin:0 0 10px 2px;
+  }
+  .run-card{
+    border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:8px;
+    cursor:pointer; background:var(--panel); transition:border-color .12s;
+  }
+  .run-card:hover{border-color:#3a4254}
+  .run-card.active{border-color:var(--pend); background:#161d2c}
+  .run-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px}
+  .run-subject{font-weight:500; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .badge{
+    font-family:var(--mono); font-size:10.5px; padding:2px 6px; border-radius:3px;
+    white-space:nowrap; flex-shrink:0;
+  }
+  .badge.resolved{background:#16301f; color:var(--ok)}
+  .badge.escalated{background:#3a2618; color:var(--warn)}
+  .run-meta{font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:4px}
+  .run-meta .denial{color:var(--bad)}
+  .empty{color:var(--dim); padding:20px 4px; font-size:12.5px}
+
+  .event{border-left:2px solid var(--line); padding:6px 0 6px 12px; margin-bottom:2px; position:relative}
+  .event::before{
+    content:''; position:absolute; left:-5px; top:9px; width:8px; height:8px;
+    border-radius:50%; background:var(--line);
+  }
+  .event.policy_decision.deny::before, .event.run_escalated::before{background:var(--bad)}
+  .event.policy_decision.deny{border-left-color:var(--bad)}
+  .event.run_escalated{border-left-color:var(--bad)}
+  .event.policy_decision.requires_approval::before{background:var(--pend)}
+  .event.policy_decision.requires_approval{border-left-color:var(--pend)}
+  .event.run_resolved::before, .event.tool_ok::before{background:var(--ok)}
+  .event.run_resolved{border-left-color:var(--ok)}
+  .event.tool_error::before{background:var(--warn)}
+  .event.tool_error{border-left-color:var(--warn)}
+  .ev-head{display:flex; gap:8px; align-items:baseline}
+  .ev-type{font-family:var(--mono); font-size:11.5px; font-weight:600}
+  .ev-time{font-family:var(--mono); font-size:10.5px; color:var(--dim)}
+  .ev-detail{font-family:var(--mono); font-size:11.5px; color:var(--dim); margin-top:2px; white-space:pre-wrap; word-break:break-word}
+  .ev-detail .k{color:#9aa5b8}
+
+  .approval-card{
+    border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;
+    background:var(--panel);
+  }
+  .approval-card .tool{font-family:var(--mono); font-weight:600; font-size:12px; color:var(--pend)}
+  .approval-card .args{font-family:var(--mono); font-size:11px; color:var(--dim); margin:6px 0}
+  .approval-card .reason{font-size:11.5px; color:var(--text); margin-bottom:8px}
+  .actions{display:flex; gap:6px}
+  .actions button{
+    flex:1; border:1px solid var(--line); background:#10141c; color:var(--text);
+    border-radius:4px; padding:6px 0; font-size:11.5px; cursor:pointer; font-family:var(--sans);
+  }
+  .actions button.approve:hover{border-color:var(--ok); color:var(--ok)}
+  .actions button.reject:hover{border-color:var(--bad); color:var(--bad)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Support Agent — Run Log</h1>
+  <span class="tag" id="summary-tag">loading…</span>
+  <div class="spacer"></div>
+  <button class="refresh" onclick="loadAll()">Refresh</button>
+</header>
+
+<div class="layout">
+  <div class="col">
+    <div class="section-label">Runs</div>
+    <div id="run-list"></div>
+  </div>
+  <div class="col">
+    <div class="section-label" id="detail-label">Audit trail</div>
+    <div id="event-list"><div class="empty">Select a run on the left.</div></div>
+  </div>
+  <div class="col">
+    <div class="section-label">Pending approvals</div>
+    <div id="approval-list"></div>
+  </div>
+</div>
+
+<script>
+let selectedRun = null;
+
+async function loadAll() {
+  const [runs, approvals] = await Promise.all([
+    fetch('/runs').then(r => r.json()),
+    fetch('/approvals').then(r => r.json()),
+  ]);
+  renderRuns(runs);
+  renderApprovals(approvals);
+  const resolved = runs.filter(r => r.resolution === 'resolved').length;
+  const escalated = runs.filter(r => r.resolution === 'escalated').length;
+  document.getElementById('summary-tag').textContent =
+    `${runs.length} runs · ${resolved} resolved · ${escalated} escalated · ${approvals.length} pending approval`;
+  if (selectedRun && runs.some(r => r.run_id === selectedRun)) {
+    loadEvents(selectedRun);
+  }
+}
+
+function renderRuns(runs) {
+  const el = document.getElementById('run-list');
+  if (!runs.length) { el.innerHTML = '<div class="empty">No runs yet. Submit a ticket via POST /tickets.</div>'; return; }
+  el.innerHTML = runs.map(r => `
+    <div class="run-card ${r.run_id === selectedRun ? 'active' : ''}" onclick="selectRun('${r.run_id}')">
+      <div class="run-top">
+        <span class="run-subject">${escapeHtml(r.subject || r.ticket_id)}</span>
+        <span class="badge ${r.resolution || 'pending'}">${r.resolution || 'running'}</span>
+      </div>
+      <div class="run-meta">
+        ${r.customer_id || '—'} · ${r.tool_calls} tool calls
+        ${r.policy_denials ? `· <span class="denial">${r.policy_denials} denied</span>` : ''}
+        ${r.approvals_filed ? `· ${r.approvals_filed} filed for approval` : ''}
+        ${r.reason ? `· ${escapeHtml(r.reason)}` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectRun(runId) {
+  selectedRun = runId;
+  document.querySelectorAll('.run-card').forEach(c => c.classList.remove('active'));
+  loadEvents(runId);
+  loadAll();
+}
+
+async function loadEvents(runId) {
+  document.getElementById('detail-label').textContent = `Audit trail — ${runId}`;
+  const events = await fetch(`/runs/${runId}/audit`).then(r => r.ok ? r.json() : []);
+  const el = document.getElementById('event-list');
+  if (!events.length) { el.innerHTML = '<div class="empty">No events.</div>'; return; }
+  el.innerHTML = events.map(renderEvent).join('');
+}
+
+function renderEvent(e) {
+  const cls = [e.event, e.decision].filter(Boolean).join(' ');
+  const time = new Date(e.ts * 1000).toLocaleTimeString();
+  let detail = '';
+  const skip = new Set(['run_id','ticket_id','event','ts']);
+  const fields = Object.entries(e).filter(([k]) => !skip.has(k) && e[k] !== null && e[k] !== undefined);
+  if (fields.length) {
+    detail = fields.map(([k,v]) => `<span class="k">${k}</span>=${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}`).join('  ');
+  }
+  return `
+    <div class="event ${cls}">
+      <div class="ev-head"><span class="ev-type">${e.event}</span><span class="ev-time">${time}</span></div>
+      ${detail ? `<div class="ev-detail">${detail}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderApprovals(approvals) {
+  const el = document.getElementById('approval-list');
+  if (!approvals.length) { el.innerHTML = '<div class="empty">Nothing pending.</div>'; return; }
+  el.innerHTML = approvals.map(a => `
+    <div class="approval-card">
+      <div class="tool">${a.tool_name}</div>
+      <div class="args">${escapeHtml(JSON.stringify(a.arguments))}</div>
+      <div class="reason">${escapeHtml(a.reason)}</div>
+      <div class="actions">
+        <button class="approve" onclick="resolveApproval('${a.request_id}', true)">Approve</button>
+        <button class="reject" onclick="resolveApproval('${a.request_id}', false)">Reject</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function resolveApproval(requestId, approve) {
+  const path = approve ? 'approve' : 'reject';
+  await fetch(`/approvals/${requestId}/${path}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({note: approve ? 'approved via dashboard' : 'rejected via dashboard'}),
+  });
+  loadAll();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadAll();
+setInterval(loadAll, 4000);
+</script>
+</body>
+</html>
